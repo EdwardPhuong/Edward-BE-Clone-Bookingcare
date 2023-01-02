@@ -12,13 +12,13 @@ const sequelize = new Sequelize(
 		dialect: "postgres",
 		logging: false,
 		dialectOptions:
-			process.env.DB_SSL === "true"
-				? {
-						ssl: {
-							require: true,
-							rejectUnauthorized: false,
-						},
-				  }
+			process.env.DB_SSL === "true"? 
+				{
+					ssl: {
+						require: true,
+						rejectUnauthorized: false,
+					}
+				}
 				: {},
 		query: {
 			raw: true,
