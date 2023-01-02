@@ -2,6 +2,7 @@ import { raw } from "body-parser";
 import _ from "lodash";
 
 import db from "../models/index";
+import emailService from "../services/emailService";
 require("dotenv").config();
 
 const MAX_NUMBER_SCHEDULE = process.env.MAX_NUMBER_SCHEDULE;
@@ -59,17 +60,24 @@ let getAllDoctor = () => {
 	});
 };
 
+let checkRequireFields = (Inputdata) => {
+	let arrInput = Object.keys(Inputdata);
+	let isValid = true;
+	let element = "";
+	for (let i = 0; i < arrInput.length; i++) {
+		let check = Inputdata[arrInput[i]];
+		if (!check) {
+			console.log("Missing Parameter", arrInput[i]);
+			isValid = false;
+			element = arrInput[i];
+			break;
+		}
+	}
+	return isValid, element;
+};
+
 let saveDetailsInfoDoctor = (Inputdata) => {
 	return new Promise(async (resolve, reject) => {
-		// let arrInput = Object.keys(Inputdata);
-		// for (let i = 0; i < arrInput.length; i++) {
-		// 	let check = Inputdata[arrInput[i]];
-		// 	if (!check) {
-		// 		console.log("Missing", arrInput[i]);
-		// 	} else {
-		// 		console.log("Success");
-		// 	}
-		// }
 		try {
 			if (
 				!Inputdata.doctorId ||
@@ -80,7 +88,8 @@ let saveDetailsInfoDoctor = (Inputdata) => {
 				!Inputdata.selectedPayment ||
 				!Inputdata.selectedProvince ||
 				!Inputdata.nameClinic ||
-				!Inputdata.addressClinic
+				!Inputdata.addressClinic ||
+				!Inputdata.specialtyId
 			) {
 				resolve({
 					errCode: 1,
@@ -124,6 +133,8 @@ let saveDetailsInfoDoctor = (Inputdata) => {
 					doctorInfo.nameClinic = Inputdata.nameClinic;
 					doctorInfo.addressClinic = Inputdata.addressClinic;
 					doctorInfo.note = Inputdata.note;
+					doctorInfo.specialtyId = Inputdata.specialtyId;
+					doctorInfo.clinicId = Inputdata.clinicId;
 					await doctorInfo.save();
 				} else {
 					//create
@@ -136,6 +147,8 @@ let saveDetailsInfoDoctor = (Inputdata) => {
 						nameClinic: Inputdata.nameClinic,
 						addressClinic: Inputdata.addressClinic,
 						note: Inputdata.note,
+						specialtyId: Inputdata.specialtyId,
+						clinicId: Inputdata.clinicId,
 					});
 				}
 				resolve({
@@ -200,7 +213,7 @@ let getDetailsDoctorById = (doctorId) => {
 				});
 
 				if (detailsDoctor && detailsDoctor.image) {
-					detailsDoctor.image = new Buffer(detailsDoctor.image, "base64").toString(
+					detailsDoctor.image = Buffer.from(detailsDoctor.image, "base64").toString(
 						"binary"
 					);
 				}
@@ -281,6 +294,11 @@ let getScheduleDoctorByDate = (doctorId, date) => {
 							as: "timeTypeData",
 							attributes: ["value_en", "value_vi"],
 						},
+						{
+							model: db.User,
+							as: "doctorData",
+							attributes: ["firstName", "lastName"],
+						},
 					],
 					raw: false,
 					nest: true,
@@ -299,6 +317,205 @@ let getScheduleDoctorByDate = (doctorId, date) => {
 	});
 };
 
+let getExtraInfoDoctorById = (doctorId) => {
+	return new Promise(async (resolve, reject) => {
+		try {
+			if (!doctorId) {
+				resolve({
+					errCode: 1,
+					errMessage: "Missing Required Parameter - doctorId !",
+				});
+			} else {
+				let data = await db.Doctor_Info.findOne({
+					where: { doctorId: doctorId },
+					attributes: {
+						exclude: ["id", "doctorId", "updateAt", "createAt"],
+					},
+					include: [
+						{
+							model: db.Allcode,
+							as: "priceTypeData",
+							attributes: ["value_vi", "value_en"],
+						},
+						{
+							model: db.Allcode,
+							as: "provinceTypeData",
+							attributes: ["value_vi", "value_en"],
+						},
+						{
+							model: db.Allcode,
+							as: "paymentTypeData",
+							attributes: ["value_vi", "value_en"],
+						},
+					],
+					raw: false,
+					nest: true,
+				});
+				if (!data) data = {};
+				resolve({
+					errCode: 0,
+					data,
+				});
+			}
+		} catch (e) {
+			reject(e);
+		}
+	});
+};
+
+let getProfileDoctorById = (doctorId) => {
+	return new Promise(async (resolve, reject) => {
+		try {
+			if (!doctorId) {
+				resolve({
+					errCode: 1,
+					errMessage: "Missing Required Parameters - getProfileDoctorById API",
+				});
+			} else {
+				let detailsDoctor = await db.User.findOne({
+					where: { id: doctorId },
+					attributes: { exclude: ["password"] },
+					include: [
+						{
+							model: db.Markdown,
+							attributes: ["description"],
+						},
+						{
+							model: db.Allcode,
+							as: "positionData",
+							attributes: ["value_en", "value_vi"],
+						},
+						{
+							model: db.Doctor_Info,
+							attributes: {
+								exclude: ["id", "doctorId", "updateAt", "createAt"],
+							},
+							include: [
+								{
+									model: db.Allcode,
+									as: "priceTypeData",
+									attributes: ["value_vi", "value_en"],
+								},
+								{
+									model: db.Allcode,
+									as: "provinceTypeData",
+									attributes: ["value_vi", "value_en"],
+								},
+								{
+									model: db.Allcode,
+									as: "paymentTypeData",
+									attributes: ["value_vi", "value_en"],
+								},
+							],
+						},
+					],
+					raw: false,
+					nest: true,
+				});
+
+				if (detailsDoctor && detailsDoctor.image) {
+					detailsDoctor.image = Buffer.from(detailsDoctor.image, "base64").toString(
+						"binary"
+					);
+				}
+
+				if (!detailsDoctor) detailsDoctor = {};
+
+				resolve({
+					errCode: 0,
+					data: detailsDoctor,
+				});
+			}
+		} catch (e) {
+			reject(e);
+		}
+	});
+};
+
+let getListPatientForDoctor = (doctorId, date) => {
+	return new Promise(async (resolve, reject) => {
+		try {
+			if (!doctorId || !date) {
+				resolve({
+					errCode: 1,
+					errMessage: "Missing Required Parameters - getListPatientForDoctor API",
+				});
+			} else {
+				let data = await db.Booking.findAll({
+					where: { doctorId: doctorId, date: date, statusId: "S2" },
+					include: [
+						{
+							model: db.User,
+							as: "patientData",
+							attributes: ["email", "firstName", "address", "phoneNumber", "gender"],
+
+							include: [
+								{
+									model: db.Allcode,
+									as: "genderData",
+									attributes: ["value_vi", "value_en"],
+								},
+							],
+						},
+
+						{
+							model: db.Allcode,
+							as: "timeTypeDataPatient",
+							attributes: ["value_vi", "value_en"],
+						},
+					],
+					raw: false,
+					nest: true,
+				});
+				resolve({
+					errCode: 0,
+					errMessage: "Successfully !",
+					data,
+				});
+			}
+		} catch (e) {
+			reject(e);
+		}
+	});
+};
+
+let sendRemedy = (data) => {
+	return new Promise(async (resolve, reject) => {
+		try {
+			if (!data.email || !data.doctorId || !data.patientId || !data.timeType) {
+				resolve({
+					errCode: 1,
+					errMessage: "Missing Required Parameters - sendRemedy API",
+				});
+			} else {
+				//update patient status
+				let appointment = await db.Booking.findOne({
+					where: {
+						doctorId: data.doctorId,
+						patientId: data.patientId,
+						timeType: data.timeType,
+						statusId: "S2",
+					},
+					raw: false,
+				});
+				if (appointment) {
+					appointment.statusId = "S3";
+					await appointment.save();
+				}
+
+				//send email remedy
+				await emailService.sendAttachment(data);
+				resolve({
+					errCode: 0,
+					errMessage: "Successfully !",
+				});
+			}
+		} catch (e) {
+			reject(e);
+		}
+	});
+};
+
 module.exports = {
 	getTopDoctorHome: getTopDoctorHome,
 	getAllDoctor: getAllDoctor,
@@ -306,4 +523,8 @@ module.exports = {
 	getDetailsDoctorById: getDetailsDoctorById,
 	bulkCreateSchedule: bulkCreateSchedule,
 	getScheduleDoctorByDate: getScheduleDoctorByDate,
+	getExtraInfoDoctorById: getExtraInfoDoctorById,
+	getProfileDoctorById: getProfileDoctorById,
+	getListPatientForDoctor: getListPatientForDoctor,
+	sendRemedy: sendRemedy,
 };
